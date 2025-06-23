@@ -22,7 +22,6 @@ class ConfirmDialog(simpledialog.Dialog):
         self.entry.focus_set()
         # Capture every keystroke, but ignore Enter here
         self.entry.bind("<Key>", self._on_key)
-        self.entry.bind("<Return>", lambda e: self.ok())
         return self.entry
 
     def _on_key(self, event):
