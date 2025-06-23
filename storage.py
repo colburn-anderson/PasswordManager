@@ -5,27 +5,33 @@ from pathlib import Path
 
 def get_usb_path() -> Path:
     """
-    Always return the folder containing:
+    Return the folder containing:
       • the bundled executable (if frozen), or
-      • this script (when running under python).
-    No prompts.
+      • this script file (when running under python).
+    No prompts—always deterministic.
     """
     if getattr(sys, "frozen", False):
-        # PyInstaller bundle
+        # PyInstaller one‐file bundle
         return Path(sys.executable).parent
-    # Development: use the directory where storage.py lives
+    # Dev mode: just use the directory where this file lives
     return Path(__file__).parent
 
-def save_database(blob: bytes) -> None:
+def load_database(usb_path: Path = None) -> bytes | None:
     """
-    Write the encrypted blob to passwords.enc in the USB path.
+    Read and return the encrypted blob, or None if it doesn't exist.
+    Accepts an optional usb_path (to satisfy calls that pass one), but
+    always falls back to get_usb_path().
     """
-    path = get_usb_path() / "passwords.enc"
-    path.write_bytes(blob)
+    usb = Path(usb_path) if usb_path is not None else get_usb_path()
+    f = usb / "passwords.enc"
+    return f.read_bytes() if f.exists() else None
 
-def load_database() -> bytes | None:
+def save_database(blob: bytes, usb_path: Path = None) -> None:
     """
-    Read and return passwords.enc, or None if it doesn't exist.
+    Write the encrypted blob to passwords.enc.
+    Accepts an optional usb_path (to satisfy calls that pass one), but
+    always falls back to get_usb_path().
     """
-    path = get_usb_path() / "passwords.enc"
-    return path.read_bytes() if path.exists() else None
+    usb = Path(usb_path) if usb_path is not None else get_usb_path()
+    out = usb / "passwords.enc"
+    out.write_bytes(blob)
