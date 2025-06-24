@@ -46,14 +46,14 @@ class LoginWindow:
     """
     def __init__(self):
         self.result = None
-        self.password = ""
         self.root = tk.Tk()
         self.root.title("Fun Password Manager")
 
+        # Determine whether we’re creating a new master or unlocking
         usb = get_usb_path()
         self.is_new = not (usb / "master.hash").exists()
 
-        # GIF loading (same as before)…
+        # --- GIF on white background ---
         img_path = Path(__file__).parent / "welcome.gif"
         self._frames = []
         if img_path.exists():
@@ -70,79 +70,48 @@ class LoginWindow:
                 idx += 1
 
         if self._frames:
-            self._anim_label = tk.Label(self.root,
-                                        image=self._frames[0],
-                                        bg="white")
-            self._anim_label.pack(pady=10)
+            gif_label = tk.Label(self.root, image=self._frames[0], bg="white")
+            gif_label.pack(pady=10)
+            self._anim_label = gif_label
             self._after_id = self.root.after(100, self._animate, 1)
 
-        prompt = (
+        # --- Dynamic prompt ---
+        prompt_text = (
             "No master password found.\nCREATE a master password:"
             if self.is_new else
             "ENTER your master password:"
         )
         tk.Label(
             self.root,
-            text=prompt,
+            text=prompt_text,
             font=("Segoe UI", 14, "bold"),
             justify="center"
         ).pack(pady=(5,10))
 
-        # Hidden password entry
-        self.pw_entry = tk.Entry(self.root, show="", width=30)
-        self.pw_entry.pack()
-        self.pw_entry.focus_set()
-        # Bind Enter to OK
-        self.pw_entry.bind("<Return>", lambda e: self.on_ok())
-        # Capture all other keystrokes
-        self.pw_entry.bind("<Key>", self._on_key)
-
-        btns = tk.Frame(self.root)
-        btns.pack(pady=15)
-        tk.Button(btns, text="OK",     width=12, command=self.on_ok).pack(side="left", padx=10)
-        tk.Button(btns, text="Cancel", width=12, command=self.on_cancel).pack(side="left", padx=10)
-
-        self.root.protocol("WM_DELETE_WINDOW", self.on_cancel)
-        self.root.mainloop()
-
-    def _animate(self, ind: int):
-        frame = self._frames[ind]
-        self._anim_label.configure(image=frame)
-        nxt = (ind + 1) % len(self._frames)
-        self._after_id = self.root.after(100, self._animate, nxt)
-
-    def _on_key(self, event):
-        # Let Return go to its binding
-        if event.keysym in ("Return", "KP_Enter"):
+        # --- Hidden entry dialog for password input ---
+        dlg = HiddenEntryDialog(
+            self.root,
+            "Master Password",
+            "Type your master password:"
+        )
+        pw = dlg.result
+        if pw is None:
+            # User cancelled
+            self.result = None
+            self._cleanup()
             return
-        if event.keysym == "BackSpace":
-            self.password = self.password[:-1]
-        elif event.char and len(event.char) == 1:
-            self.password += event.char
-        self.pw_entry.delete(0, tk.END)
-        return "break"
-
-    def on_ok(self, event=None):
-        # Cancel animation callbacks
-        if hasattr(self, "_after_id"):
-            self.root.after_cancel(self._after_id)
-
-        pw = self.password
-        usb = get_usb_path()
-        mpw_file = usb / "master.hash"
 
         if self.is_new:
-            if not pw:
-                messagebox.showerror("Error", "Password cannot be empty.")
-                return
-            # Use our custom ConfirmDialog
-            confirm_dlg = ConfirmDialog(self.root, "Confirm Password")
-            confirm = confirm_dlg.result
-            # If they cancelled or mismatched, reset and retry
-            if confirm is None or confirm != pw:
+            # Confirm new password
+            confirm = HiddenEntryDialog(
+                self.root,
+                "Confirm Password",
+                "Confirm new master password:"
+            ).result
+            if confirm != pw:
                 messagebox.showerror("Error", "Passwords did not match.")
-                self.password = ""
-                return
+                self._cleanup()
+                return self.__init__()  # restart
             key = set_master_password_from_string(pw)
             messagebox.showinfo("Success", "Master password created.")
             self.result = key
@@ -150,18 +119,23 @@ class LoginWindow:
             key = verify_master_password_from_string(pw)
             if not key:
                 messagebox.showerror("Error", "Incorrect master password.")
-                self.password = ""
-                return
+                self._cleanup()
+                return self.__init__()  # retry
             self.result = key
 
-        self.root.destroy()
+        self._cleanup()
 
-    def on_cancel(self, event=None):
+    def _animate(self, ind: int):
+        frame = self._frames[ind]
+        self._anim_label.configure(image=frame)
+        nxt = (ind + 1) % len(self._frames)
+        self._after_id = self.root.after(100, self._animate, nxt)
+
+    def _cleanup(self):
+        # Cancel animation callbacks if any
         if hasattr(self, "_after_id"):
             self.root.after_cancel(self._after_id)
-        self.result = None
         self.root.destroy()
-
 
 
 
@@ -199,6 +173,39 @@ class EntryDialog(simpledialog.Dialog):
         pwd   = self.pwd_var.get() or None
         notes = self.notes_text.get("1.0", "end").strip() or None
         self.result = (label, user, pwd, notes)
+
+class HiddenEntryDialog(simpledialog.Dialog):
+    """
+    A generic dialog that captures a password with no echo,
+    and submits on Enter.
+    """
+    def __init__(self, parent, title, prompt):
+        self.prompt = prompt
+        self.password = ""
+        super().__init__(parent, title)
+
+    def body(self, master):
+        tk.Label(master, text=self.prompt).pack(pady=5)
+        self.entry = tk.Entry(master, show="", width=30)
+        self.entry.pack(pady=5)
+        self.entry.focus_set()
+        # Capture all keystrokes (build self.password) and swallow them
+        self.entry.bind("<Key>", self._on_key)
+        # Bind Enter to OK
+        self.entry.bind("<Return>", lambda e: self.ok())
+        return self.entry
+
+    def _on_key(self, event):
+        if event.keysym == "BackSpace":
+            self.password = self.password[:-1]
+        elif event.char and len(event.char) == 1:
+            self.password += event.char
+        # Never let Tk insert anything
+        self.entry.delete(0, tk.END)
+        return "break"
+
+    def apply(self):
+        self.result = self.password
 
 
 class MainWindow(tk.Tk):
@@ -245,9 +252,12 @@ class MainWindow(tk.Tk):
         if not sel:
             return
         e = self.pm.list_entries()[sel[0]]
-        pw = e.get_password(self.key)
-        copy_to_clipboard(pw)
-        messagebox.showinfo(e.label, f"Username: {e.username}\n(Password copied to clipboard)")
+        pwd = e.get_password(self.key)
+        copy_to_clipboard(pwd)
+        messagebox.showinfo(
+            e.label,
+            "Password copied to clipboard."
+        )
 
     def update_entry(self):
         sel = self.listbox.curselection()
@@ -278,20 +288,32 @@ class MainWindow(tk.Tk):
 
     def change_master(self):
         old_key = self.key
-        pw1 = simpledialog.askstring("Change Master", "New master password:", show="*")
-        if not pw1:
+
+        # Prompt for new master
+        dlg1 = HiddenEntryDialog(
+            self, "Change Master", "Type new master password:"
+        )
+        pw1 = dlg1.result
+        if pw1 is None or pw1 == "":
             return
-        pw2 = simpledialog.askstring("Confirm New Master", "Confirm new password:", show="*")
-        if pw1 != pw2:
-            messagebox.showerror("Mismatch", "Passwords did not match.")
+
+        # Confirm it
+        pw2 = HiddenEntryDialog(
+            self, "Confirm New Master", "Confirm new master password:"
+        ).result
+        if pw2 != pw1 or pw2 is None:
+            messagebox.showerror("Error", "Passwords did not match.")
             return
+
+        # Rotate everything
         new_key = set_master_password_from_string(pw1)
-        for i, e in enumerate(self.pm.list_entries()):
-            plain = e.get_password(old_key)
+        for i, entry in enumerate(self.pm.list_entries()):
+            plain = entry.get_password(old_key)
             self.pm.update_entry(i, None, None, plain, None, new_key)
+
         self.key = new_key
         self.pm.save(new_key)
-        messagebox.showinfo("Success", "Master password changed and database re-encrypted.")
+        messagebox.showinfo("Success", "Master password changed.")
 
     def on_closing(self):
         self.pm.save(self.key)
