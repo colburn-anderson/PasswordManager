@@ -99,8 +99,10 @@ class LoginWindow:
         self.pw_entry.focus_set()
         # Build our buffer on every keystroke:
         self.pw_entry.bind("<Key>", self._on_key)
-        # Bind Enter to OK:
-        self.pw_entry.bind("<Return>", lambda e: self.on_ok())
+        # Bind Enter (method) on both entry and window
+        self.pw_entry.bind("<Return>", self.on_ok)
+        self.root.bind("<Return>", self.on_ok)
+
 
         # ----- Buttons -----
         btns = tk.Frame(self.root)
@@ -215,10 +217,6 @@ class EntryDialog(simpledialog.Dialog):
         self.result = (label, user, pwd, notes)
 
 class HiddenEntryDialog(simpledialog.Dialog):
-    """
-    A generic dialog that captures a password with no echo,
-    and submits on Enter.
-    """
     def __init__(self, parent, title, prompt):
         self.prompt = prompt
         self.password = ""
@@ -229,8 +227,12 @@ class HiddenEntryDialog(simpledialog.Dialog):
         self.entry = tk.Entry(master, show="", width=30)
         self.entry.pack(pady=5)
         self.entry.focus_set()
-        # Capture all keystrokes (build self.password) and swallow them
+
+        # Capture keystrokes
         self.entry.bind("<Key>", self._on_key)
+        # Bind Enter directly to the Dialog.ok method
+        self.entry.bind("<Return>", self.ok)
+
         return self.entry
 
     def _on_key(self, event):
@@ -238,12 +240,13 @@ class HiddenEntryDialog(simpledialog.Dialog):
             self.password = self.password[:-1]
         elif event.char and len(event.char) == 1:
             self.password += event.char
-        # Never let Tk insert anything
+        # Never let Tk echo anything
         self.entry.delete(0, tk.END)
         return "break"
 
     def apply(self):
         self.result = self.password
+
 
 
 class MainWindow(tk.Tk):
