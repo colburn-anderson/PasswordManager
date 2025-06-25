@@ -1,14 +1,16 @@
 # encryption.py
+
 import os
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.backends import default_backend
 
-BLOCK_SIZE = 256  # bytes; adjust if you want larger or variable padding
+
+BLOCK_SIZE = 256
 
 def derive_key(password: bytes, salt: bytes) -> bytes:
-    """As before: PBKDF2-HMAC-SHA256 → 32-byte key."""
+    """PBKDF2-HMAC-SHA256 → 32-byte key."""
     kdf = PBKDF2HMAC(
         algorithm=hashes.SHA256(),
         length=32,
@@ -19,47 +21,44 @@ def derive_key(password: bytes, salt: bytes) -> bytes:
     return kdf.derive(password)
 
 def _pad(data: bytes) -> bytes:
-    """Pad data to the next multiple of BLOCK_SIZE with random bytes."""
-    pad_len = (BLOCK_SIZE - (len(data) % BLOCK_SIZE)) or BLOCK_SIZE
-    return data + os.urandom(pad_len)
+    """
+    Prefix a 4-byte big-endian length, then pad with random bytes
+    up to the next multiple of BLOCK_SIZE.
+    """
+    length = len(data).to_bytes(4, "big")
+    payload = length + data
+    pad_len = (BLOCK_SIZE - len(payload) % BLOCK_SIZE) or BLOCK_SIZE
+    return payload + os.urandom(pad_len)
 
 def _unpad(padded: bytes) -> bytes:
     """
-    Remove padding.
-    WARNING: since we used random bytes, we can only infer original length
-    by storing it in the header. We’ll prefix the payload with a 4-byte length.
+    Read the 4-byte length, then strip off that many plaintext bytes.
     """
     orig_len = int.from_bytes(padded[:4], "big")
-    return padded[4:4+orig_len]
+    return padded[4:4 + orig_len]
 
 def encrypt(plaintext: bytes, metadata: bytes, key: bytes) -> bytes:
     """
-    Encrypts: [4-byte length][metadata||separator||plaintext] + padding,
-    then AES-GCM → nonce + ciphertext+tag.
+    Encrypts:
+      pad( [4-byte len][metadata || b'||' || plaintext] )
+    then AES-GCM over nonce || ciphertext.
+    Returns nonce || ct.
     """
-    # 1) Build the clear payload
-    sep = b"||"
-    combined = metadata + sep + plaintext
-    # 2) Prefix with length so we can unpad
-    payload = len(combined).to_bytes(4, "big") + combined
-    # 3) Pad to hide actual size
-    padded = _pad(payload)
-
-    # 4) Encrypt with AES-GCM
-    aesgcm = AESGCM(key)
-    nonce = os.urandom(12)
-    ct = aesgcm.encrypt(nonce, padded, associated_data=None)
+    combined = metadata + b"||" + plaintext
+    padded   = _pad(combined)
+    aesgcm   = AESGCM(key)
+    nonce    = os.urandom(12)
+    ct       = aesgcm.encrypt(nonce, padded, None)
     return nonce + ct
 
 def decrypt(blob: bytes, key: bytes) -> tuple[bytes, bytes]:
     """
-    Reverses encrypt(): splits nonce, decrypts, unpads, and returns (metadata, plaintext).
+    Splits nonce||ct, decrypts, unpads, then splits metadata||plaintext.
+    Returns (metadata, plaintext).
     """
-    aesgcm = AESGCM(key)
+    aesgcm   = AESGCM(key)
     nonce, ct = blob[:12], blob[12:]
-    padded = aesgcm.decrypt(nonce, ct, associated_data=None)
-
-    # Unpad and separate
-    payload = _unpad(padded)
-    metadata, plaintext = payload.split(b"||", 1)
+    padded    = aesgcm.decrypt(nonce, ct, None)
+    combined  = _unpad(padded)
+    metadata, plaintext = combined.split(b"||", 1)
     return metadata, plaintext

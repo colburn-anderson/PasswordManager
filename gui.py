@@ -293,10 +293,9 @@ class MainWindow(tk.Tk):
         if not sel:
             return
         e = self.pm.list_entries()[sel[0]]
-        pwd = e.get_password(self.key)
+        pwd = e.get_password()
         copy_to_clipboard(pwd)
-        messagebox.showinfo(
-            e.label,
+        messagebox.showinfo(e.label,
             "Password copied to clipboard."
         )
 
