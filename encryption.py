@@ -20,45 +20,25 @@ def derive_key(password: bytes, salt: bytes) -> bytes:
     )
     return kdf.derive(password)
 
-def _pad(data: bytes) -> bytes:
+def encrypt(plaintext:bytes, metadata: bytes, key: bytes) -> bytes:
     """
-    Prefix a 4-byte big-endian length, then pad with random bytes
-    up to the next multiple of BLOCK_SIZE.
-    """
-    length = len(data).to_bytes(4, "big")
-    payload = length + data
-    pad_len = (BLOCK_SIZE - len(payload) % BLOCK_SIZE) or BLOCK_SIZE
-    return payload + os.urandom(pad_len)
-
-def _unpad(padded: bytes) -> bytes:
-    """
-    Read the 4-byte length, then strip off that many plaintext bytes.
-    """
-    orig_len = int.from_bytes(padded[:4], "big")
-    return padded[4:4 + orig_len]
-
-def encrypt(plaintext: bytes, metadata: bytes, key: bytes) -> bytes:
-    """
-    Encrypts:
-      pad( [4-byte len][metadata || b'||' || plaintext] )
-    then AES-GCM over nonce || ciphertext.
-    Returns nonce || ct.
+    Combine metadata||plaintest and AES-GCM encrypt:
+        ciphertext = AESGCM(key).encrypt(nonce, metadata||b'||'||plaintext, None)
+        Returns nonce||ciphertext.
     """
     combined = metadata + b"||" + plaintext
-    padded   = _pad(combined)
-    aesgcm   = AESGCM(key)
-    nonce    = os.urandom(12)
-    ct       = aesgcm.encrypt(nonce, padded, None)
+    aesgcm = AESGCM(key)
+    nonce = os.urandom(12)
+    ct = aesgcm.encrypt(nonce, combined, None)
     return nonce + ct
 
 def decrypt(blob: bytes, key: bytes) -> tuple[bytes, bytes]:
     """
-    Splits nonce||ct, decrypts, unpads, then splits metadata||plaintext.
-    Returns (metadata, plaintext).
+    Splits nonce||ciphertext, decrypts with AES-GCM,
+    then splits metadata||plaintext. Returns (metadata, plaintext).
     """
-    aesgcm   = AESGCM(key)
+    aesgcm = AESGCM(key)
     nonce, ct = blob[:12], blob[12:]
-    padded    = aesgcm.decrypt(nonce, ct, None)
-    combined  = _unpad(padded)
+    combined  = aesgcm.decrypt(nonce, ct, None)
     metadata, plaintext = combined.split(b"||", 1)
     return metadata, plaintext
