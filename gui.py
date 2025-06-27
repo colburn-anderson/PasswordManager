@@ -140,6 +140,11 @@ class LoginWindow:
         # stop animation
         if hasattr(self, "_after_id"):
             self.root.after_cancel(self._after_id)
+        try:
+            self.pw_entry.enbind("<Return>")
+            self.root.unbind("<Return>")
+        except Exception:
+            pass
 
         pw = self.password
         usb = get_usb_path()
@@ -181,6 +186,11 @@ class LoginWindow:
     def on_cancel(self, event=None):
         if hasattr(self, "_after_id"):
             self.root.after_cancel(self._after_id)
+        try:
+            self.pw_entry.unbind("<Return>")
+            self.root.unbind("<Return>")
+        except Exception:
+            pass
         self.result = None
         self.root.destroy()
 
@@ -252,6 +262,12 @@ class HiddenEntryDialog(simpledialog.Dialog):
     def apply(self):
         self.result = self.password
 
+    def ok(self, event=None):
+        try:
+            self.entry.unbind("<Return>")
+        except Exception:
+            pass
+        return super().ok(event)    
 
 
 class MainWindow(tk.Tk):
