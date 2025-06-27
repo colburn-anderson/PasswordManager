@@ -42,16 +42,16 @@ class ConfirmDialog(simpledialog.Dialog):
         # Called by ok(), sets self.result
         self.result = self.password
 
+    def ok(self, event=None):
+        try:
+            self.entry.unbind("<Return>")
+        except Exception:
+            pass
+        return super().ok(event)    
+
 
 class LoginWindow:
-    """
-    A single-window welcome/login screen with:
-     - animated GIF at the top (on white)
-     - dynamic prompt label ("CREATE" vs "ENTER")
-     - truly hidden password entry (no echo)
-     - OK/Cancel buttons
-     - Enter bound to OK
-    """
+    """A single-window welcome/login screen"""
     def __init__(self):
         self.result = None
         self.password = ""
@@ -141,7 +141,7 @@ class LoginWindow:
         if hasattr(self, "_after_id"):
             self.root.after_cancel(self._after_id)
         try:
-            self.pw_entry.enbind("<Return>")
+            self.pw_entry.unbind("<Return>")
             self.root.unbind("<Return>")
         except Exception:
             pass
