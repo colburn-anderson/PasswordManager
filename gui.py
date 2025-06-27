@@ -106,7 +106,6 @@ class LoginWindow:
         self.pw_entry.bind("<Key>", self._on_key)
         # Bind Enter (method) on both entry and window
         self.pw_entry.bind("<Return>", self.on_ok)
-        self.root.bind("<Return>", self.on_ok)
 
 
         # ----- Buttons -----
@@ -127,7 +126,9 @@ class LoginWindow:
     def _on_key(self, event):
         # Leave Return to its own binding
         if event.keysym in ("Return", "KP_Enter"):
-            return
+            self.on_ok()
+            return "break"
+        
         if event.keysym == "BackSpace":
             self.password = self.password[:-1]
         elif event.char and len(event.char) == 1:
@@ -245,16 +246,19 @@ class HiddenEntryDialog(simpledialog.Dialog):
 
         # Capture keystrokes
         self.entry.bind("<Key>", self._on_key)
-        # Bind Enter directly to the Dialog.ok method
-        self.entry.bind("<Return>", self.ok)
+        
 
         return self.entry
 
     def _on_key(self, event):
+        if event.keysym in ("Return", "KP_Enter"):
+                self.ok()
+                return "break"
         if event.keysym == "BackSpace":
             self.password = self.password[:-1]
         elif event.char and len(event.char) == 1:
             self.password += event.char
+        
         # Never let Tk echo anything
         self.entry.delete(0, tk.END)
         return "break"
