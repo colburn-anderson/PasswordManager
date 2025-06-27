@@ -9,6 +9,11 @@ from auth import set_master_password_from_string, verify_master_password_from_st
 from manager import PasswordManager
 from utils import generate_password, copy_to_clipboard
 
+# Silently ignore background callback errors
+def _ignore_bg_errors(self, exc, val, tb):
+    return
+tk.Tk.report_callback_exception = _ignore_bg_errors
+
 
 class ConfirmDialog(simpledialog.Dialog):
     """
